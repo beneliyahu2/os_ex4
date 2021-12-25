@@ -10,6 +10,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <pthread.h>
 
 typedef struct fifo_queue{ //todo fix
     DIR *first;
@@ -21,9 +22,10 @@ void insert_to_quque(fifo_queue *q, DIR *dir){ //todo fix
 }
 
 int is_dir(const char *path) {
+    void *ret_val;
     struct stat stat_buf;
     if (stat(path, &stat_buf) != 0)
-        return 0;
+        pthread_exit(ret_val); //todo - deal with the error and catch the exit in join (?)
     return S_ISDIR(stat_buf.st_mode); //S_ISDIR macro returns non-zero if the file is a directory
 }
 
@@ -34,25 +36,33 @@ int search_in_dir(char *root_path, DIR *dir, char *rel_dir_path, char *term){   
     struct dirent *entry;
     char entry_full_path[PATH_MAX];
     char entry_rel_path[PATH_MAX];
+    DIR *d;
 
     while((entry = readdir(dir)) != NULL){ //returns NULL when get to the end of the directory
         char *entry_name = entry->d_name;
         sprintf(entry_rel_path, "%s/%s", rel_dir_path, entry_name);
         sprintf(entry_full_path, "%s/%s", root_path, entry_rel_path);
-        printf("%s\n",entry_full_path);
+        printf("%s\n",entry_full_path); //todo del
 
         if (strcmp(entry_name, ".")==0 || strcmp(entry_name, "..")==0){
             printf("ignoring . and ..\n\n"); //todo del
-            continue;
         }
-        if (is_dir(entry_full_path) != 0){
-            //add to queue
-            printf("is a dir\n\n"); //todo del
-            continue; //todo del
+        else if (is_dir(entry_full_path) != 0){
+            errno = 0;
+            d = opendir(entry_full_path);
+            if (d == NULL) { // directory can’t be searched
+                printf("Directory %s: Permission denied.\n", entry_rel_path);
+            }
+            else{ //directory can be searched
+                printf("Directory %s: added to queue.\n", entry_name);
+                //add to queue
+            }
+            closedir(d);
+            printf("\n"); //todo del
         }
         else{ //regular file
             if (strstr(entry_name, term)){
-                printf("found one!!! relpath to it: %s\n\n",entry_rel_path); //todo del
+                printf("found one!!! relative path to it: %s\n\n",entry_rel_path); //todo del
 //                printf("%s\n", entry_rel_path); //todo uncomment
                 found_files_cnt++;
             } else{
@@ -81,5 +91,6 @@ int main(int argc, char *argv[]){
     DIR *dir = opendir(full_path);
     int found_dir_num = search_in_dir(root_path, dir, rel_path, term);
     printf("Done searching, found %d files\n", found_dir_num);
+    closedir(dir);
 
 }
