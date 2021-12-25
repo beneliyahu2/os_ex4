@@ -17,7 +17,6 @@
 //------------------------------------------------------------------------------------------------
 
 typedef struct dir_node{
-    DIR *dir;
     char rel_path[PATH_MAX];
     struct dir_node *next;
 }dir_node;
@@ -34,13 +33,12 @@ fifo_queue *init_queue(){
     return q;
 }
 
-int insert_to_queue(fifo_queue *q, DIR *dir, char *rel_path){ //todo fix
+int insert_to_queue(fifo_queue *q, char *rel_path){ //todo fix
     // create new node:
     dir_node *new_node = malloc(sizeof(dir_node));
     if (!new_node){
         return -1;
     }
-    new_node->dir = dir;
     strcpy(new_node->rel_path,rel_path);
     new_node->next = NULL;
     // insert it as head:
@@ -83,17 +81,24 @@ int is_dir(const char *path) {
 // -----------------------------------  search_in_dir: -------------------------------------------------------
 // -----------------------------------------------------------------------------------------------------------
 
-int search_in_dir(char *root_path, fifo_queue *q, DIR *dir, char *rel_dir_path, char *term){   //, fifo_queue queue){
+int search_in_dir(char *root_path, fifo_queue *q, char *rel_dir_path,const char *term){   //, fifo_queue queue){
     int found_files_cnt = 0;
-    struct dirent *entry;
+    struct dirent *entry = NULL;
     char entry_full_path[PATH_MAX];
     char entry_rel_path[PATH_MAX];
+    char dir_full_path[PATH_MAX];
     DIR *entry_dir;
 
     printf("scanning dir: '%s'\n", rel_dir_path); //todo del
 
+    // open directory:
+    sprintf(dir_full_path, "%s/%s",root_path, rel_dir_path);
+    DIR *dir = opendir(dir_full_path);
+
+    //scanning the entries of the directory:
     while((entry = readdir(dir)) != NULL){ //returns NULL when get to the end of the directory
         char *entry_name = entry->d_name;
+        printf("entry: %s\n",entry_name); //todo del
         sprintf(entry_rel_path, "%s/%s", rel_dir_path, entry_name);
         sprintf(entry_full_path, "%s/%s", root_path, entry_rel_path);
 //        printf("entry: %s\n",entry_full_path); //todo del
@@ -109,10 +114,10 @@ int search_in_dir(char *root_path, fifo_queue *q, DIR *dir, char *rel_dir_path, 
             }
             else{ //directory can be searched
                 //add to queue:
-                insert_to_queue(q, entry_dir, entry_rel_path);
+                closedir(entry_dir);
+                insert_to_queue(q, entry_rel_path);
 //                printf("Directory %s: added to queue.\n", entry_name); //todo del
             }
-            closedir(entry_dir);
         }
         else{ //regular file
             if (strstr(entry_name, term)){
@@ -124,21 +129,20 @@ int search_in_dir(char *root_path, fifo_queue *q, DIR *dir, char *rel_dir_path, 
             }
         }
     }
-    printf("dir: '%s' haver %d fit files\n\n", rel_dir_path, found_files_cnt); //todo del
+    closedir(dir);
+    printf("dir: '%s' have %d fit files\n\n", rel_dir_path, found_files_cnt); //todo del
 
     return found_files_cnt;
 }
 
 // -------------------------------------------- search in tree: ----------------------------------------
 
-int search_in_tree(char *root_path, char *term){
+int search_in_tree(char *root_path,const char *term){
     int fit_files_in_tree;
-    DIR *curr_dir;
     char curr_rel_path[PATH_MAX];
-    DIR *root_dir = opendir(root_path);
 
     fifo_queue *q = init_queue();
-    insert_to_queue(q, root_dir, "");
+    insert_to_queue(q, "");
 
     dir_node *curr_node;
     while(1){
@@ -146,10 +150,9 @@ int search_in_tree(char *root_path, char *term){
         if (curr_node == NULL){
             break;
         }
-        curr_dir = curr_node->dir;
         strcpy(curr_rel_path, curr_node->rel_path);
-        fit_files_in_tree += search_in_dir(root_path, q, curr_dir, curr_rel_path, term);
-        break;
+        fit_files_in_tree += search_in_dir(root_path, q, curr_rel_path, term);
+//        break;
     }
     return fit_files_in_tree;
 }
@@ -162,29 +165,7 @@ int main(int argc, char *argv[]){
     char *root_path = argv[1];
     char *term = argv[2];
     //int threads_num = atoi(argv[3]); //todo uncomment
-//
-//    // get full path:
-//    char full_path[PATH_MAX];
-//    sprintf(full_path, "%s/%s", root_path, rel_path);
-//
-//    //open root
-//    DIR *dir = opendir(full_path);
-//
-//    // TEST queue:
-//    fifo_queue *q = init_queue();
-//    insert_to_queue(q, dir, rel_path);
-//    printf("head is: %s\n", q->head->rel_path);
-//    dir_node *prev_head = dequeue_head(q);
-//    printf("prev head is: %s\n", prev_head->rel_path);
-//    if (q->head==NULL && q->tail==NULL){
-//        printf("q head and tile is null\n");
-//    }
-//
-//    // search in root:
-//    int found_dir_num = search_in_dir(root_path, dir, rel_path, term);
-//    printf("Done searching, found %d files\n", found_dir_num);
-//    closedir(dir);
-//
+
     int res = search_in_tree(root_path, term);
     printf("Done searching, found %d files\n", res);
 }
