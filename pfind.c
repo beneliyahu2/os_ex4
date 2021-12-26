@@ -9,7 +9,6 @@
 #include <string.h>
 #include <sys/types.h>
 #include <sys/stat.h>
-#include <unistd.h>
 #include <pthread.h>
 
 //mutex
@@ -17,6 +16,7 @@ pthread_mutex_t mutex;
 pthread_cond_t cv;
 pthread_cond_t not_empty;
 pthread_cond_t all_created;
+int sleeping_num = 0;
 
 //------------------------------------------------------------------------------------------------
 // ------------------------------------- FIFO queue: ---------------------------------------------
@@ -80,13 +80,12 @@ dir_node *dequeue_head(fifo_queue *q){
     prev_head->next=NULL;
     return prev_head;
 }
- // --------------------------------------- args_struct: -----------------------------------------------------
 
-typedef struct args_struct{
-    fifo_queue *q;
-    char *root_path;
-    char *term;
-}args_struct;
+// global variables:
+char *root_path;
+char *term;
+int threads_num;
+fifo_queue *q;
 
 // ------------------------------------ utilities: -----------------------------------------------------------
 
@@ -101,7 +100,7 @@ int is_dir(const char *path) {
 // -----------------------------------  search_in_dir: -------------------------------------------------------
 // -----------------------------------------------------------------------------------------------------------
 
-int search_in_dir(char *root_path, fifo_queue *q, char *rel_dir_path,const char *term){   //, fifo_queue queue){
+int search_in_dir(char *rel_dir_path){
     int found_files_cnt = 0;
     struct dirent *entry = NULL;
     char entry_full_path[PATH_MAX];
@@ -150,13 +149,7 @@ int search_in_dir(char *root_path, fifo_queue *q, char *rel_dir_path,const char 
 }
 // --------------------------------------- thread_routine: --------------------------------------------
 
-void *thread_routine(void *args){
-
-    // extract arguments from "args":
-    args_struct *a = (args_struct*)args;
-    fifo_queue *q = a->q;
-    char *root_path = a->root_path;
-    char *term = a->term;
+void *thread_routine(){
 
     //Wait for all other searching threads to be created:
     pthread_cond_wait(&all_created, &mutex);
@@ -165,7 +158,11 @@ void *thread_routine(void *args){
     dir_node *curr_node = dequeue_head(q);
     if (curr_node == NULL){ //empty queue
         //sleep (wait):
+        sleeping_num++;
         pthread_cond_wait(&not_empty, &mutex);
+        if (sleeping_num == threads_num){
+            pthread_exit(0);
+        }
         // todo - If all other searching threads are already waiting:
             //todo - all searching threads should exit
             //todo - return that the search in the tree is done
@@ -175,7 +172,7 @@ void *thread_routine(void *args){
         strcpy(curr_rel_path, curr_node->rel_path);
 
         // search the directory of the node:
-        int num_of_finds_in_dir = search_in_dir(root_path, q, curr_rel_path, term);
+        int num_of_finds_in_dir = search_in_dir(curr_rel_path);
 
         // return the search result:
         pthread_exit((void*)num_of_finds_in_dir);
@@ -184,26 +181,21 @@ void *thread_routine(void *args){
 
 // -------------------------------------------- search in tree: ----------------------------------------
 
-int search_in_tree(char *root_path, const char *term, int threads_num){
+int search_in_tree(){
 
     int num_of_finds_in_tree; // the returned value
 
     // Create a FIFO queue that holds directories:
-    fifo_queue *q = init_queue();
+    q = init_queue();
 
     // Put the search root directory in the queue:
     insert_to_queue(q, "");
 
-    // create struct with the arguments for the thread_routine:
-    args_struct *args = malloc(sizeof(args_struct));
-    strcpy(args->root_path,root_path);
-    args->q = q;
-    strcpy(args->term, term);
 
     // Create n searching threads:
     pthread_t threads[threads_num];
     for (int i = 0; i < threads_num; i++){
-        pthread_create(&threads[i], NULL, thread_routine, args);
+        pthread_create(&threads[i], NULL, thread_routine, NULL);
     }
     //wait for all threads to create, and then signals them to start searching:
     pthread_cond_signal(&all_created);
@@ -223,15 +215,15 @@ int search_in_tree(char *root_path, const char *term, int threads_num){
 // -------------------------------------------------------------------------------------------
 
 int main(int argc, char *argv[]){
-    char *root_path = argv[1];
-    char *term = argv[2];
-    int threads_num = atoi(argv[3]);
+    root_path = argv[1];
+    term = argv[2];
+    threads_num = atoi(argv[3]);
 
     // Initialize mutex and condition variable objects
     pthread_mutex_init(&mutex, NULL);
     pthread_cond_init(&cv, NULL);
 
-    int res = search_in_tree(root_path, term, threads_num);
+    int res = search_in_tree();
     printf("Done searching, found %d files\n", res);
 
     // destroy mutex and cv
