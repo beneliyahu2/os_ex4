@@ -108,8 +108,6 @@ int search_in_dir(char *rel_dir_path){
     char dir_full_path[PATH_MAX];
     DIR *entry_dir;
 
-    printf("scanning dir: '%s'\n", rel_dir_path); //todo del
-
     // open directory:
     sprintf(dir_full_path, "%s/%s",root_path, rel_dir_path);
     DIR *dir = opendir(dir_full_path);
@@ -117,7 +115,6 @@ int search_in_dir(char *rel_dir_path){
     //scanning the entries of the directory:
     while((entry = readdir(dir)) != NULL){ //returns NULL when get to the end of the directory
         char *entry_name = entry->d_name;
-        printf("entry name: %s\n", entry_name); //todo del
         sprintf(entry_rel_path, "%s/%s", rel_dir_path, entry_name);
         sprintf(entry_full_path, "%s/%s", root_path, entry_rel_path);
 
